@@ -1,0 +1,119 @@
+# SPDX-License-Identifier: MIT
+# Publishes the ROKFOSS unkernel container image to GitHub Container Registry.
+#
+# This workflow compiles nothing. The Release workflow builds the patched
+# kernel, the npm package and the two distro images once and uploads them as
+# its `release` artifact; this workflow packages that artifact into an image.
+#
+# One click: Actions > Release > Run workflow. Leave "release" unchecked for
+# an image-only run (no tag, no npm publish, no GitHub release). When that
+# build succeeds this workflow runs and pushes
+# ghcr.io/krfoss/unkernel:<version>; a published release also updates :latest.
+name: Docker
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Release run id whose `release` artifact should be packaged"
+        required: true
+        type: string
+
+permissions:
+  actions: read # download the artifact from the triggering Release run
+  contents: read
+  packages: write # push to GHCR
+
+concurrency:
+  group: ghcr-image
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  image:
+    name: Build and push to GHCR
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run && github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout the Dockerfile
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve the Release run
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISPATCH_RUN_ID: ${{ inputs.run_id }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          run_id="${DISPATCH_RUN_ID:-$EVENT_RUN_ID}"
+          if [[ ! "$run_id" =~ ^[0-9]+$ ]]; then
+            echo "::error::no Release run id (run Release first, or pass run_id)"
+            exit 1
+          fi
+          head_sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq .head_sha)
+          echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "alt-tag=sha-${head_sha:0:12}" >> "$GITHUB_OUTPUT"
+
+      - name: Download the Release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release
+          run-id: ${{ steps.source.outputs.run-id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: image-context
+
+      - name: Verify the artifact and read its version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for f in unkernel.tgz distros.json alpine.erofs debian.erofs; do
+            test -s "image-context/$f" || { echo "::error::$f is missing from the Release artifact"; exit 1; }
+          done
+          version=$(tar -xOzf image-context/unkernel.tgz package/package.json | jq -r .version)
+          if [[ -z "$version" || "$version" = null ]]; then
+            echo "::error::no version in the packaged package.json"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # :latest means an actual GitHub release exists for this version.
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "image: $version (latest: $([ "$(gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null)" = "v$version" ] && echo yes || echo no))"
+
+      - name: Copy the Dockerfile into the build context
+        run: cp Dockerfile image-context/Dockerfile
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: image-context
+          push: true
+          tags: |
+            ghcr.io/krfoss/unkernel:${{ steps.version.outputs.version }}
+            ghcr.io/krfoss/unkernel:${{ steps.version.outputs.latest == 'true' && 'latest' || steps.source.outputs.alt-tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/KRFOSS/unkernel
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
