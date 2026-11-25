@@ -491,7 +491,11 @@ jobs:
       # Every release goes to the dist-tag latest. npm refuses to publish a
       # semver prerelease (every generated version) without an explicit
       # --tag, hence the flag.
+      # Only upstream owns the `unkernel` npm package and its OIDC trust.
+      # A fork cannot publish there; it still tags, releases on GitHub and
+      # publishes the GHCR image, so only this step is skipped on forks.
       - name: Publish to npm
+        if: ${{ github.repository == 'pithings/unkernel' }}
         env:
           VERSION: ${{ needs.guard.outputs.version }}
         run: |
