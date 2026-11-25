@@ -30,10 +30,17 @@ COPY . /src
 # Do NOT set VERCEL at all: Nitro picks the vercel preset from the variable's
 # mere presence (even VERCEL=0), which writes .vercel/output/ and leaves no
 # .output/server/index.mjs. With it unset, Nitro uses the node-server preset.
+#
+# KW_DEB_MIRROR optionally bakes a fixed base for the guest's deb.debian.org
+# apt requests. Empty (the default) makes the page use its own same-origin
+# /deb, so this one image works on any host that proxies /deb to a Debian
+# mirror. Deployers who want a fixed mirror can pass --build-arg KW_DEB_MIRROR.
+ARG KW_DEB_MIRROR=""
 ENV KW_KERNEL=/src/artifacts/unkernel.wasm \
     KW_DISTROS=/src/artifacts \
     KW_GL=/src/artifacts \
     KW_VK=/src/artifacts \
+    KW_DEB_MIRROR=$KW_DEB_MIRROR \
     CI=false
 
 RUN test -s "$KW_KERNEL" \

@@ -21,6 +21,8 @@
 //   ?routes=0                          URL only: plain HTTP to the hosts of DEFAULT_ROUTES goes
 //                                      through Wisp too (default: answered with fetch() from
 //                                      their CORS mirrors, the SDK's fetchRoutes(); net.ts)
+//   deb.debian.org is answered by this page's own /deb (same-origin), so the
+//   image works on any host that proxies /deb to a Debian mirror. No URL knob.
 //   ?jit=0                             kwemu interprets only (default: its JIT tier compiles hot
 //                                      guest code to WebAssembly; counters in KW.jitStats())
 //   ?verbose=1                         write every kernel message to the terminal, in gray
@@ -177,10 +179,12 @@ export const DEFAULT_DISTRO = DISTROS_OFFERED.find((d) => d.name === "debian")?.
 /**
  * Plain-HTTP hosts the guest's network answers with fetch() (net.ts), each
  * from a CORS-enabled mirror with the same paths under the base: Debian's
- * apt sources. ?routes=0 turns them off.
+ * apt sources. ?routes=0 turns them off. deb.debian.org is added at read
+ * time by debBase(): this page's same-origin /deb, unless the build baked a
+ * KW_DEB_MIRROR override. No deployer-specific host is stored here.
  */
 export const DEFAULT_ROUTES: Readonly<Record<string, string>> = Object.freeze({
-	"deb.debian.org": "https://mirror.unkernel.dev/deb",
+	// "deb.debian.org" is added by debBase() in readConfig(), not here.
 	// The mirror's other paths, under its own name: /github/OWNER/REPO/releases/download/TAG/ASSET
 	// (llama.cpp's and Ollama's) and /ollama/v2/library/NAME/{manifests/TAG,blobs/sha256:HEX}
 	// (Ollama's registry), which the llama.cpp and Ollama apps' scripts ask first (apps/agents), and
@@ -480,6 +484,16 @@ const isMobileUA = (): boolean => typeof navigator !== "undefined" && /Android|i
 /** A touch device or a mobile user agent (Config.mobile). */
 export const isMobile = (): boolean => isCoarse() || isMobileUA();
 
+/**
+ * Base answering the guest's deb.debian.org apt requests. Empty KW_DEB_MIRROR
+ * means this page's own /deb, so one published image works on any host that
+ * proxies /deb to a Debian mirror. Computed at call time, not module load,
+ * so importing config.ts in a worker (no `location`) stays safe.
+ */
+function debBase(): string {
+	return __KW_DEB_MIRROR__ || `${location.origin}/deb`;
+}
+
 export function readConfig(search: string = location.search, saved: Record<string, string> = loadSettings()): Config {
 	const url = new URLSearchParams(search);
 	const params = new URLSearchParams(saved);
@@ -560,7 +574,7 @@ export function readConfig(search: string = location.search, saved: Record<strin
 		cmdlineGiven: !!append || !!root,
 		net: wispParam !== "0",
 		wisp: wisp?.length ? wisp : null,
-		routes: url.get("routes") === "0" ? null : { ...DEFAULT_ROUTES },
+		routes: url.get("routes") === "0" ? null : { ...DEFAULT_ROUTES, "deb.debian.org": debBase() },
 		jit: params.get("jit") !== "0",
 		display: params.get("display") !== "0",
 		sound: params.get("sound") !== "0",

@@ -21,6 +21,11 @@ on:
         description: "Release run id whose `release` artifact should be packaged"
         required: true
         type: string
+      deb_mirror:
+        description: "Web image only: optional fixed base for the guest's deb.debian.org apt (blank = the page's own same-origin /deb)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   actions: read # download the artifact from the triggering Release run
@@ -194,6 +199,11 @@ jobs:
           context: .
           file: Dockerfile.web
           push: true
+          # No fork-specific host. Blank leaves the page's own same-origin
+          # /deb, so the published image works on any host; a deployer who
+          # wants a fixed mirror can pass one via the deb_mirror input.
+          build-args: |
+            KW_DEB_MIRROR=${{ inputs.deb_mirror }}
           tags: |
             ghcr.io/krfoss/unkernel-web:${{ steps.version.outputs.version }}
             ghcr.io/krfoss/unkernel-web:${{ steps.version.outputs.latest == 'true' && 'latest' || steps.source.outputs.alttag }}

@@ -191,7 +191,15 @@ export default defineConfig({
 			// build resolves them, and __KW_BUILD__ reads the base's banner.
 			name: "unkernel:kernel",
 			async config(_, { command }) {
-				return { define: { __KW_BUILD__: JSON.stringify(await buildInfo(command === "serve")) } };
+				return {
+					define: {
+						__KW_BUILD__: JSON.stringify(await buildInfo(command === "serve")),
+						// The guest's apt base comes from this page's own /deb (same-origin),
+						// so one image works on any host. KW_DEB_MIRROR is an optional
+						// build-time override for deployers who want a fixed mirror.
+						__KW_DEB_MIRROR__: JSON.stringify(process.env.KW_DEB_MIRROR || ""),
+					},
+				};
 			},
 			configureServer(server) {
 				// /distros/<name>.erofs with Range support and as they are (erofs

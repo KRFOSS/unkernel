@@ -14,6 +14,13 @@ declare const __KW_BUILD__: {
 };
 
 /**
+ * Optional build-time base answering the guest's Debian apt host (Vite define
+ * from KW_DEB_MIRROR). Empty means this page's same-origin /deb, so one image
+ * works on any host. A deployer may bake a fixed mirror at build time.
+ */
+declare const __KW_DEB_MIRROR__: string;
+
+/**
  * The page's kernel and distro images (vite.config.ts, web/scripts/kernel.ts
  * pageSource()): the base bundle's UP kernel and its SMP one (null without
  * an SMP patch), the guest GL renderer's virgl.mjs (null without one; fetched
