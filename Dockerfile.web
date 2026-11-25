@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: MIT
+# ROKFOSS unkernel WEB image (the browser desktop at unkernel.dev).
+#
+# Built by .github/workflows/docker.yml from the SAME `release` artifact as
+# the CLI image. The artifact already carries the patched Linux wasm bundle,
+# distros.json, every *.erofs image and the optional GL/Vulkan renderers, so
+# pnpm build:web points KW_* at those files and compiles nothing from source.
+#
+# The built Nitro Node server serves the page, the hashed kernel assets and
+# the distro images on port 3000 (see web/vite.config.ts).
+
+# ---- build stage: install the web app, bundle the artifact into the page ----
+FROM node:26-bookworm-slim AS build
+
+# web/package.json declares pnpm@12.14.0 in the root packageManager field.
+RUN corepack enable && corepack prepare pnpm@12.14.0 --activate
+
+WORKDIR /src
+
+# The whole checkout is the build context: web/ (Vite + Nitro), the root
+# pnpm workspace files and THIRD-PARTY.md (read by web/vite.config.ts for
+# /licenses.md). .git is present too, so the page can show its commit.
+COPY . /src
+
+# The `release` artifact files are placed in artifacts/ of the build
+# context by the workflow (so they land at /src/artifacts here). KW_* make
+# pageSource()/withGl()/withVk() use them instead of downloading a GitHub
+# release (which has no CORS headers and would fail in a container).
+ENV KW_KERNEL=/src/artifacts/unkernel.wasm \
+    KW_DISTROS=/src/artifacts \
+    KW_GL=/src/artifacts \
+    KW_VK=/src/artifacts \
+    CI=false \
+    VERCEL=0
+
+RUN test -s "$KW_KERNEL" \
+ && test -s /src/artifacts/distros.json \
+ && ls /src/artifacts/*.erofs >/dev/null 2>&1 \
+ && echo '--- web build inputs ---' \
+ && ls -l /src/artifacts \
+ && pnpm install --frozen-lockfile \
+ && pnpm build:web \
+ && test -s /src/web/.output/server/index.mjs
+
+# ---- runtime stage: only the Nitro Node output ----
+FROM node:26-bookworm-slim
+
+LABEL org.opencontainers.image.title="ROKFOSS unkernel web" \
+      org.opencontainers.image.source="https://github.com/KRFOSS/unkernel" \
+      org.opencontainers.image.licenses="MIT AND GPL-2.0-only"
+
+WORKDIR /app
+COPY --from=build /src/web/.output /app/.output
+
+ENV PORT=3000 HOST=0.0.0.0 NITRO_PORT=3000 NITRO_HOST=0.0.0.0
+EXPOSE 3000
+
+# node .output/server/index.mjs is web/package.json's `start` script.
+CMD ["node", ".output/server/index.mjs"]
