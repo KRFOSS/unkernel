@@ -62,7 +62,7 @@ jobs:
           fi
           head_sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq .head_sha)
           echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
-          echo "alt-tag=sha-${head_sha:0:12}" >> "$GITHUB_OUTPUT"
+          echo "alttag=sha-${head_sha:0:12}" >> "$GITHUB_OUTPUT"
 
       - name: Download the Release artifact
         uses: actions/download-artifact@v4
@@ -86,14 +86,14 @@ jobs:
             echo "::error::no version in the packaged package.json"
             exit 1
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
           # :latest means an actual GitHub release exists for this version.
+          latest=false
           if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "latest=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "latest=false" >> "$GITHUB_OUTPUT"
+            latest=true
           fi
-          echo "image: $version (latest: $([ "$(gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null)" = "v$version" ] && echo yes || echo no))"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "image: $version (latest: $latest)"
 
       - name: Copy the Dockerfile into the build context
         run: cp Dockerfile image-context/Dockerfile
@@ -113,7 +113,7 @@ jobs:
           push: true
           tags: |
             ghcr.io/krfoss/unkernel:${{ steps.version.outputs.version }}
-            ghcr.io/krfoss/unkernel:${{ steps.version.outputs.latest == 'true' && 'latest' || steps.source.outputs.alt-tag }}
+            ghcr.io/krfoss/unkernel:${{ steps.version.outputs.latest == 'true' && 'latest' || steps.source.outputs.alttag }}
           labels: |
             org.opencontainers.image.source=https://github.com/KRFOSS/unkernel
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
