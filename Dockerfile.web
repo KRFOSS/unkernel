@@ -10,13 +10,11 @@
 # the distro images on port 3000 (see web/vite.config.ts).
 
 # ---- build stage: install the web app, bundle the artifact into the page ----
-FROM node:26-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 
-# Node 26 no longer bundles corepack (removed in Node 25), so install the
-# pinned pnpm from the root packageManager field with npm instead.
-# Disable pnpm's self-manager: it would otherwise try to call corepack again.
-RUN npm install -g pnpm@12.14.0 \
- && pnpm config set manage-package-manager-versions false --global
+# Node 24 still bundles corepack; this is the exact combination verified
+# locally (node 24.22.1 + corepack pnpm 12.14.0 built the web app cleanly).
+RUN corepack enable && corepack prepare pnpm@12.14.0 --activate
 
 WORKDIR /src
 
@@ -48,7 +46,7 @@ RUN test -s "$KW_KERNEL" \
  && test -s /src/web/.output/server/index.mjs
 
 # ---- runtime stage: only the Nitro Node output ----
-FROM node:26-bookworm-slim
+FROM node:24-bookworm-slim
 
 LABEL org.opencontainers.image.title="ROKFOSS unkernel web" \
       org.opencontainers.image.source="https://github.com/KRFOSS/unkernel" \
