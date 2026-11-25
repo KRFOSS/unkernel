@@ -2,6 +2,8 @@
 
 **A real Linux kernel, compiled to WebAssembly. It boots to a shell in less than a second.**
 
+> 한국어 번역: [README.ko.md](README.ko.md)
+
 <p align="center">
   <a href="https://unkernel.dev/"><b>Try it</b></a> ·
   <a href="#-performance">Performance</a> ·
