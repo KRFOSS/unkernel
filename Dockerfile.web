@@ -12,8 +12,11 @@
 # ---- build stage: install the web app, bundle the artifact into the page ----
 FROM node:26-bookworm-slim AS build
 
-# web/package.json declares pnpm@12.14.0 in the root packageManager field.
-RUN corepack enable && corepack prepare pnpm@12.14.0 --activate
+# Node 26 no longer bundles corepack (removed in Node 25), so install the
+# pinned pnpm from the root packageManager field with npm instead.
+# Disable pnpm's self-manager: it would otherwise try to call corepack again.
+RUN npm install -g pnpm@12.14.0 \
+ && pnpm config set manage-package-manager-versions false --global
 
 WORKDIR /src
 
